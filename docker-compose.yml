@@ -1,0 +1,135 @@
+
+# services:
+#   postgres:
+#     image: postgres:15-alpine
+#     container_name: codementor_postgres
+#     environment:
+#       POSTGRES_USER: codementor
+#       POSTGRES_PASSWORD: codementor_pass
+#       POSTGRES_DB: codementor_db
+#     ports:
+#       - "5433:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U codementor"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+
+#   redis:
+#     image: redis:7-alpine
+#     container_name: codementor_redis
+#     ports:
+#       - "6379:6379"
+#     volumes:
+#       - redis_data:/data
+#     healthcheck:
+#       test: ["CMD", "redis-cli", "ping"]
+#       interval: 10s
+#       timeout: 3s
+#       retries: 5
+
+#   # Code execution sandbox - Python runtime
+#   sandbox_python:
+#     image: python:3.11-slim
+#     container_name: codementor_sandbox_python
+#     network_mode: none
+#     command: tail -f /dev/null
+#     deploy:
+#       resources:
+#         limits:
+#           cpus: '0.5'
+#           memory: 512M
+
+# volumes:
+#   postgres_data:
+#   redis_data:
+
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: codementor_postgres
+    environment:
+      POSTGRES_USER: codementor
+      POSTGRES_PASSWORD: codementor_pass
+      POSTGRES_DB: codementor_db
+    ports:
+      - "5433:5432"  # External: 5433, Internal: 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codementor -d codementor_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: codementor_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: codementor_backend
+    ports:
+      - "8001:8000"  # External: 8001, Internal: 8000 (no conflict with your other project)
+    env_file:
+      - ./backend/.env
+    environment:
+      # Use service names (postgres, redis) for internal Docker network communication
+      - DATABASE_URL=postgresql+asyncpg://codementor:codementor_pass@postgres:5432/codementor_db
+      - DATABASE_URL_SYNC=postgresql://codementor:codementor_pass@postgres:5432/codementor_db
+      - REDIS_URL=redis://redis:6379/0
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - CODE_EXECUTION_MEMORY_LIMIT=${CODE_EXECUTION_MEMORY_LIMIT}
+      - ENVIRONMENT=${ENVIRONMENT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./backend:/app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  sandbox_python:
+    image: python:3.11-slim
+    container_name: codementor_sandbox_python
+    network_mode: none
+    command: tail -f /dev/null
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge
