@@ -48,4 +48,7 @@ AI-powered coding mentor platform with a Python FastAPI backend and a React fron
 - `frontend/` — React app, pages, components
 
 ## Collaborators
-
+Me and
+ - Tinatin Javakhadze(@tjavakhadze)
+ - Gvantsa Tchuradze(@Gvantsa21)
+ - Davit Karoiani(@D13Karo)
